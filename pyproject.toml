@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "milvus-api"
+version = "0.1.0"
+description = "FastAPI service for PDF bulk import and hybrid search with Milvus"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+
+# Web framework
+fastapi = "^0.115.0"
+uvicorn = { extras = ["standard"], version = "^0.31.0" }
+
+# PDF parsing
+pypdf = "^5.1.0"
+
+# Machine learning
+sentence-transformers = "^3.2.1"
+scikit-learn = "^1.5.2"
+
+# Milvus client & bulk writer
+
+# HTTP requests for bulk import API
+requests = "^2.32.3"
+python-multipart = "^0.0.20"
+pymilvus = "^2.6.2"
+python-dotenv = "^1.1.1"
+pydantic-settings = "^2.11.0"
+
+[tool.poetry.group.dev.dependencies]
+# Optional dev tools
+black = "^24.0.0"
+isort = "^5.13.2"
+ruff = "^0.6.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
