@@ -6,7 +6,7 @@ from pymilvus.bulk_writer import list_import_jobs,get_import_progress
 import json
 from app.bulkImport import bulk_import_from_azure, write_and_upload_to_azure
 from app.insertData import convert_bulk_data_to_row_dicts, insertData
-from app.utility import  get_client, getSchema, load_models, prepareData, prepareDataTxt
+from app.utility import  client, getSchema, load_models, prepareData, prepareDataTxt, read_file_return_dict
 from app.config import settings
 from fastapi import Request
 from pathlib import Path
@@ -26,8 +26,6 @@ async def health_check():
 @app.post("/create-collection/")
 async def create_collection(collection_name):
     logger.info(f"Creating collection: {collection_name}")
-
-    client=get_client()
 
     schema,index_params=getSchema()
 
@@ -64,8 +62,6 @@ async def list_collections():
 @app.post("/drop-collection/")
 async def drop_collection(collection_name):
     logger.info(f"Dropping collection:")
-    
-    client=get_client()
    
     client.drop_collection(
         collection_name=collection_name
@@ -81,16 +77,24 @@ async def bulk_import_folder(folder_path: str = Body(..., embed=True)):
     all_texts = []
     for idx, file_path in enumerate(file_list):
         logger.info(f"[{idx+1}/{len(file_list)}] Reading file: {file_path}")
-        with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
-        all_texts.append(text)
+        data = await read_file_return_dict(file_path)
+        all_texts.extend(data)
+        # try catch in case of exception
+    remote_paths = await write_and_upload_to_azure(all_texts)
+    resp = bulk_import_from_azure(remote_paths)
+    logger.info(f"JOB ID: {resp}")
+    
+
+        #all_texts.append(data)
+    #logger.info("All files processed and uploaded!")
+        # with open(file_path, 'r', encoding='utf-8') as f:
+            # text = f.read()
+            # all_texts.append(text)
     # Prepare data for all files at once
-    data = await prepareDataTxt(all_texts)
-    remote_paths = await write_and_upload_to_azure(data)
-    logger.info("All files processed and uploaded!")
-    resp = bulk_import_from_azure(remote_paths, collection_name=settings.COLLECTION_NAME)
-    logger.info(f"Bulk import completed. Response: {resp}")
-    return {"bulk_import_response": resp}
+    # data = await prepareDataTxt(all_texts)
+    
+    #logger.info(f"Bulk import completed. Response: {resp}")
+    return {"bulk_import_response"}
 
 @app.post("/bulk-import/")
 async def bulkImport(files: List[UploadFile] = File(...), request: Request = None):
@@ -110,7 +114,7 @@ async def bulkImport(files: List[UploadFile] = File(...), request: Request = Non
         pdf_path.unlink()  
     
     logger.info("All the files processed!")
-    resp = bulk_import_from_azure(all_remote_paths, collection_name=settings.COLLECTION_NAME)
+    resp = bulk_import_from_azure(all_remote_paths)
     logger.info(f"Bulk import completed. Response: {resp}")
     return {"bulk_import_response": resp}
 

@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.12.4"
 
 # Web framework
 fastapi = "^0.115.0"
@@ -25,9 +25,11 @@ scikit-learn = "^1.5.2"
 # HTTP requests for bulk import API
 requests = "^2.32.3"
 python-multipart = "^0.0.20"
-pymilvus = "^2.6.2"
+pymilvus = {version = "^2.6.2", extras = ["bulk_writer"] }
 python-dotenv = "^1.1.1"
 pydantic-settings = "^2.11.0"
+langchain = ">=0.3,<0.4"
+langchain-text-splitters = "^0.3.11"
 
 [tool.poetry.group.dev.dependencies]
 # Optional dev tools

@@ -3,11 +3,9 @@ import logging
 from pypdf import PdfReader
 from sklearn.feature_extraction.text import TfidfVectorizer
 from pymilvus import MilvusClient, DataType,Function, FunctionType
-
+from langchain_text_splitters import SentenceTransformersTokenTextSplitter
 from app.config import settings
-
-
-
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -18,6 +16,9 @@ def get_client():
         token="root:Milvus"
     )
     return client
+
+# Global Milvus client
+client = get_client()
 
 def load_models():
     model_dense_vector=SentenceTransformer("all-mpnet-base-v2")
@@ -34,19 +35,19 @@ def extract_text_from_pdf(pdf_path):
     logger.info(f"Total extracted text length: {len(text)} characters")
     return text
 
-def split_text(text, chunk_size=200, overlap=50):
+def split_text(text, chunk_size=512, overlap=256):
     logger.info(f"Splitting text into chunks (chunk_size={chunk_size}, overlap={overlap})")
     words = text.split()
     chunks = []
     for i in range(0, len(words), chunk_size - overlap):
         chunk = " ".join(words[i:i+chunk_size])
         # Ensure no chunk exceeds 2000 characters
-        if len(chunk) <= 2000:
+        if len(chunk) <= 800:
             chunks.append(chunk)
         else:
             # If chunk is too long, split by character count
-            for j in range(0, len(chunk), 2000):
-                sub_chunk = chunk[j:j+2000]
+            for j in range(0, len(chunk), 800):
+                sub_chunk = chunk[j:j+800]
                 chunks.append(sub_chunk)
     logger.info(f"Total chunks created: {len(chunks)}")
     return chunks
@@ -70,12 +71,12 @@ def split_text(text, chunk_size=200, overlap=50):
 
 def getSchema():
     schema = MilvusClient.create_schema(
-        auto_id=False,
+        auto_id=True,
         enable_dynamic_field=True,
     )
-    client = get_client()
-    schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True, auto_id=False)
-    schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=2000,enable_analyzer=True)
+    schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True, auto_id=True)
+    schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=5000,enable_analyzer=True)
+    schema.add_field(field_name="file_name", datatype=DataType.VARCHAR, max_length=2000,enable_analyzer=True)
     schema.add_field(field_name="dense_vector", datatype=DataType.FLOAT_VECTOR, dim=1024)
     schema.add_field(field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
 
@@ -86,7 +87,7 @@ def getSchema():
     output_field_names=["dense_vector"],        # Vector field(s) for storing embeddings
     params={                                    # TEI specific parameters (function-level)
         "provider": "TEI",                      # Must be set to "TEI"
-        "endpoint": "http://10.224.1.36:80", # Required: Points to your TEI service address
+        "endpoint": "http://10.0.171.238:8080", # Required: Points to your TEI service address
         }
     )
     bm25_function = Function(
@@ -148,3 +149,21 @@ async def prepareDataTxt(text):
         "text": chunks,
     }
     return data
+
+#Initialize a global text splitter
+splitter = SentenceTransformersTokenTextSplitter(chunk_overlap=64, chunk_size=512)
+
+async def read_file_return_dict(file_path):
+    logger.info(f"Reading text file: {file_path}")
+    #Read file name from path
+    file_name = os.path.basename(file_path)
+    with open(file_path, 'r', encoding='utf-8') as f:
+        text = f.read()
+        chunks = splitter.split_text(text)
+        # Convert the chunks into the required dictionary format
+        # chunk text should be under key "text"
+        data = [{"text": x, "file_name": file_name} for x in chunks]
+        logger.info(f"File '{file_name}' read and split into {len(chunks)} chunks.")
+    return data
+
+    
