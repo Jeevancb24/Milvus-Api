@@ -1,6 +1,6 @@
 import logging
-from pymilvus import Collection, MilvusClient, CollectionSchema
-from pymilvus.bulk_writer import RemoteBulkWriter, BulkFileType,bulk_import,LocalBulkWriter
+from pymilvus import CollectionSchema
+from pymilvus.bulk_writer import RemoteBulkWriter, BulkFileType,bulk_import
 import numpy as np
 from app.utility import  client
 import uuid
@@ -35,7 +35,7 @@ async def write_and_upload_to_azure(data):
 #     file_type=BulkFileType.JSON
 # )
     try: 
-        remote_path = str(uuid.uuid4()).replace("-", "") + "\\" + "data"
+        remote_path = str(uuid.uuid4()).replace("-", "")
         logger.info(f"Initializing RemoteBulkWriter for Azure: {remote_path}")
         writer = RemoteBulkWriter(
         schema=CollectionSchema.construct_from_dict(collection),

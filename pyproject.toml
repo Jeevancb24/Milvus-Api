@@ -16,12 +16,6 @@ uvicorn = { extras = ["standard"], version = "^0.31.0" }
 # PDF parsing
 pypdf = "^5.1.0"
 
-# Machine learning
-sentence-transformers = "^3.2.1"
-scikit-learn = "^1.5.2"
-
-# Milvus client & bulk writer
-
 # HTTP requests for bulk import API
 requests = "^2.32.3"
 python-multipart = "^0.0.20"

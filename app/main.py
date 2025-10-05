@@ -6,7 +6,7 @@ from pymilvus.bulk_writer import list_import_jobs,get_import_progress
 import json
 from app.bulkImport import bulk_import_from_azure, write_and_upload_to_azure
 from app.insertData import convert_bulk_data_to_row_dicts, insertData
-from app.utility import  client, getSchema, load_models, prepareData, prepareDataTxt, read_file_return_dict
+from app.utility import  client, getSchema, prepareData, prepareDataTxt, read_file_return_dict
 from app.config import settings
 from fastapi import Request
 from pathlib import Path

@@ -1,4 +1,3 @@
-from sentence_transformers import SentenceTransformer
 import logging
 from pypdf import PdfReader
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -19,11 +18,6 @@ def get_client():
 
 # Global Milvus client
 client = get_client()
-
-def load_models():
-    model_dense_vector=SentenceTransformer("all-mpnet-base-v2")
-    model_sparse_vector=TfidfVectorizer()
-    return model_dense_vector,model_sparse_vector
 
 def extract_text_from_pdf(pdf_path):
     logger.info(f"Extracting text from PDF: {pdf_path}")
@@ -75,9 +69,9 @@ def getSchema():
         enable_dynamic_field=True,
     )
     schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True, auto_id=True)
-    schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=5000,enable_analyzer=True)
+    schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=6000,enable_analyzer=True)
     schema.add_field(field_name="file_name", datatype=DataType.VARCHAR, max_length=2000,enable_analyzer=True)
-    schema.add_field(field_name="dense_vector", datatype=DataType.FLOAT_VECTOR, dim=1024)
+    schema.add_field(field_name="dense_vector", datatype=DataType.FLOAT_VECTOR, dim=768)
     schema.add_field(field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
 
     text_embedding_function = Function(
@@ -87,7 +81,7 @@ def getSchema():
     output_field_names=["dense_vector"],        # Vector field(s) for storing embeddings
     params={                                    # TEI specific parameters (function-level)
         "provider": "TEI",                      # Must be set to "TEI"
-        "endpoint": "http://10.0.171.238:8080", # Required: Points to your TEI service address
+        "endpoint": "http://10.0.8.188:8080", # Required: Points to your TEI service address
         }
     )
     bm25_function = Function(
