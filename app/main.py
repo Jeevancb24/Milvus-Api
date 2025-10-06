@@ -46,7 +46,7 @@ def import_status(job_id: str):
         job_id=job_id,
     )
 
-    logger.info(json.dumps(resp.json(), indent=4))
+    # logger.info(json.dumps(resp.json(), indent=4))
     return resp.json()
 
 @app.get("/list-collections/")
@@ -68,37 +68,56 @@ async def drop_collection(collection_name):
     logger.info(f"Collection '{collection_name}' dropped successfully.")
     return {"collection_name": collection_name, "status": "dropped"}
 
+async def run_file_batch(file_list,batch_size):
+    all_texts = []
+    batch_count = 0
+    failed_files = []
+    current_file_batch = []
+    for idx, file_path in enumerate(file_list):
+        #Batch 10 files at a time!
+        logger.info(f"[{idx+1}/{len(file_list)}] Reading file: {file_path}")
+        data = await read_file_return_dict(file_path)
+        current_file_batch.append(file_path)
+        batch_count += 1
+        if batch_count < batch_size and (idx + 1) < len(file_list):
+            all_texts.extend(data)
+            continue  # Continue accumulating files in the batch
+        # Process the current batch
+        # try catch in case of exception
+        remote_paths = await write_and_upload_to_azure(all_texts)
+        resp = bulk_import_from_azure(remote_paths)
+        logger.info(f"JOB ID: {resp}")
+        batch_count = 0
+        all_texts = []  # Reset for next batch
+        # Check for the progress of the job until it is completed
+        while True:
+            #check every 5 seconds
+            await asyncio.sleep(5)
+            progress = import_status(resp)
+            if progress['data']['state'] in ['Completed', 'Failed']:
+                logger.info(f"Import job {resp} finished with state: {progress['data']['state']}")
+                if progress['data']['state'] == 'Failed':
+                    failed_files.extend(current_file_batch)
+                break
+            else:
+                logger.info(f"Import job is in state: {progress['data']['state']}.")
+        current_file_batch = []  # Reset for next batch
+    return failed_files
+
 @app.post("/bulk-import-folder/")
 async def bulk_import_folder(folder_path: str = Body(..., embed=True)):
     logger.info(f"Bulk import from folder: {folder_path}")
     # Get all text files in the folder
     file_list = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.txt')]
     logger.info(f"Found {len(file_list)} text files in folder.")
-    #all_texts = []
-    failed_files = []
-    for idx, file_path in enumerate(file_list):
-        logger.info(f"[{idx+1}/{len(file_list)}] Reading file: {file_path}")
-        data = await read_file_return_dict(file_path)
-        #all_texts.extend(data)
-        # try catch in case of exception
-        remote_paths = await write_and_upload_to_azure(data)
-        resp = bulk_import_from_azure(remote_paths)
-        logger.info(f"JOB ID: {resp}")
-        # Check for the progress of the job until it is completed
-        while True:
-            progress = import_status(resp)
-            if progress['data']['state'] in ['Completed', 'Failed']:
-                logger.info(f"Import job {resp} finished with state: {progress['data']['state']}")
-                if progress['data']['state'] == 'Failed':
-                    failed_files.append(file_path)
-                break
-            else:
-                logger.info(f"Import job is in state: {progress['data']['state']}.")
-                #check every 5 seconds
-                await asyncio.sleep(1)
+    
+    batch_size = 100  # Number of files to process in each batch
+    failed_files = await run_file_batch(file_list,batch_size)
 
     if failed_files:
-        logger.error(f"Failed to import the following files: {failed_files}")
+        final_failed_files = await run_file_batch(failed_files,1)  # Process failed files one by one
+        if final_failed_files:
+            logger.error(f"Some files failed to import even after retrying: {final_failed_files}")
     else:
         logger.info("All files processed and uploaded successfully!")
     
