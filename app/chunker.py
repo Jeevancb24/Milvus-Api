@@ -1,7 +1,12 @@
 import logging
+from langchain_text_splitters import RecursiveJsonSplitter
 from transformers import AutoTokenizer
 from langchain_text_splitters.sentence_transformers import SentenceTransformersTokenTextSplitter
 import os
+from pypdf import PdfReader
+import io
+import pandas as pd
+import json
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -65,11 +70,67 @@ def enforce_token_limit(text: str, max_tokens: int, tokenizer) -> list[str]:
     return safe_chunks
 
 async def read_file_return_dict(file_path):
-    logger.info(f"Reading text file: {file_path}")
+    logger.info(f"Reading file: {file_path}")
     file_name = os.path.basename(file_path)
-    with open(file_path, "r", encoding="utf-8") as f:
-        text = f.read()
+    file_extension = file_name.split('.')[-1].lower()
+
+    # Read file content as bytes
+    with open(file_path, "rb") as f:
+        file_content = f.read()
+
+    if file_extension == 'json':
+        logger.info("Processing JSON file.")
+        json_data = json.loads(file_content.decode("utf-8"))
+        text_splitter = RecursiveJsonSplitter(
+            max_chunk_size=2000  # You can adjust this as needed
+        )
+        chunks = text_splitter.split_json(json_data)
+        # Convert each chunk (dict) to string for downstream processing
+        chunks = [json.dumps(chunk, ensure_ascii=False) for chunk in chunks]
+    else:
+        logger.info(f"Processing {file_extension.upper()} file.")
+        text = read_file(file_content, file_name)
         chunks = enforce_token_limit(text, MODEL_TOKEN_LIMIT, hf_tokenizer)
-        data = [{"text": x, "file_name": file_name} for x in chunks]
-        logger.info(f"File '{file_name}' read and split into {len(chunks)} chunks.")
+
+    data = [{"text": x, "file_name": file_name} for x in chunks]
+    logger.info(f"File '{file_name}' read and split into {len(chunks)} chunks.")
     return data
+
+def read_file(file_content: bytes, file_name: str) -> str:
+    # Extract file extension from the file name
+    file_extension = file_name.split('.')[-1].lower()
+    text = ""
+
+    # Check the file type
+    try:
+        if file_extension == 'pdf':
+            # Read PDF file
+            pdf_reader = PdfReader(io.BytesIO(file_content))
+            for page in pdf_reader.pages:
+                text += page.extract_text() or ""  # Fallback to empty string if `extract_text` fails
+
+        elif file_extension in ['csv', 'xlsx']:
+            # Read CSV or Excel file
+            if file_extension == 'csv':
+                file_data = pd.read_csv(io.BytesIO(file_content))
+            else:
+                file_data = pd.read_excel(io.BytesIO(file_content), engine='openpyxl')
+
+            # Combine text from all columns
+            for column in file_data.select_dtypes(include=['object']).columns:
+                text += " ".join(file_data[column].dropna().astype(str)) + " "
+
+        elif file_extension == 'txt':
+            # Read plain text file
+            text = file_content.decode("utf-8")
+
+        else:
+            raise ValueError("Unsupported file type. Please upload a PDF, CSV, Excel, or text file.")
+
+    except Exception as e:
+        raise ValueError(f"Error processing file: {e}")
+
+    if not text.strip():
+        raise ValueError("The file appears to be empty or contains unsupported content.")
+
+    return text

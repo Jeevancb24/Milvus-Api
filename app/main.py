@@ -1,17 +1,14 @@
 import os
 from fastapi import Body, FastAPI, UploadFile, File
-from typing import List
 import logging
 from pymilvus.bulk_writer import list_import_jobs,get_import_progress
 import json
 from app.bulkImport import bulk_import_from_azure, write_and_upload_to_azure
-from app.insertData import convert_bulk_data_to_row_dicts, insertData
-from app.utility import  client, getSchema, prepareData, prepareDataTxt
+from app.utility import  client, getSchema
 from app.config import settings
-from fastapi import Request
-from pathlib import Path
 from app.chunker import read_file_return_dict
 import asyncio
+from pymilvus import AnnSearchRequest, RRFRanker
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -116,47 +113,86 @@ async def bulk_import_folder(folder_path: str = Body(..., embed=True)):
     #logger.info(f"Bulk import completed. Response: {resp}")
     return {"bulk_import_response"}
 
-@app.post("/bulk-import/")
-async def bulkImport(files: List[UploadFile] = File(...), request: Request = None):
-    logger.info(f"Received {len(files)} files for import")
-    all_remote_paths = []
 
-    for idx, file in enumerate(files):
-        logger.info(f"[{idx+1}/{len(files)}] Processing file: {file.filename}")
-        pdf_path = Path(file.filename)
-        with open(pdf_path, "wb") as f:
-            f.write(await file.read())
-            # Now pdf_path exists and can be read by PdfReader
-        data=await prepareData(pdf_path)
-        remote_paths = await write_and_upload_to_azure(data)
-        all_remote_paths.extend(remote_paths)
-        # cleanup
-        pdf_path.unlink()  
-    
-    logger.info("All the files processed!")
-    resp = bulk_import_from_azure(all_remote_paths)
-    logger.info(f"Bulk import completed. Response: {resp}")
-    return {"bulk_import_response": resp}
+@app.post("/batch-hybrid-query/")
+async def batch_hybrid_query(
+    queries_file: UploadFile = File(...),
+    output_dir: str = Body("output", embed=True)
+):
+    """
+    Accepts a JSON file with multiple queries:
+    [
+        {"query_num": "1", "query": "xxxx yyyy zzzz"},
+        ...
+    ]
+    For each query, performs hybrid search and saves result as query_<query_num>.json in output_dir.
+    """
+    import os
 
-@app.post("/bulk-insert")
-async def bulkInsert(folder_path: str = Body(..., embed=True)):
-    logger.info(f"Bulk import from folder: {folder_path}")
-    # Get all text files in the folder
-    file_list = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.txt')]
-    logger.info(f"Found {len(file_list)} text files in folder.")
-    all_texts = []
-    for idx, file_path in enumerate(file_list):
-        logger.info(f"[{idx+1}/{len(file_list)}] Reading file: {file_path}")
-        with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
-        all_texts.append(text)
-    # Prepare data for all files at once
-    data = await prepareDataTxt(all_texts)
-    row_data = convert_bulk_data_to_row_dicts(data)
-    res=await insertData(row_data)
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
 
-    logger.info(f"All files processed and data inserted.{res}")
-    return {"status": "All files processed and data inserted."}
+    # Read and parse the uploaded JSON file
+    content = await queries_file.read()
+    queries = json.loads(content)
+
+    results = []
+    for q in queries:
+        query_num = q.get("query_num")
+        query_text = q.get("query")
+        if not query_num or not query_text:
+            continue
+
+        # Prepare search requests
+        search_param_1 = {
+            "data": [query_text],
+            "anns_field": "dense_vector",
+            "param": {"nprobe": 10},
+            "limit": 5
+        }
+        search_param_2 = {
+            "data": [query_text],
+            "anns_field": "sparse_vector",
+            "param": {"drop_ratio_search": 0.2},
+            "limit": 5
+        }
+        reqs = [AnnSearchRequest(**search_param_1), AnnSearchRequest(**search_param_2)]
+        ranker = RRFRanker(100)
+
+        # Perform hybrid search
+        res = client.hybrid_search(
+            collection_name=settings.COLLECTION_NAME,
+            reqs=reqs,
+            ranker=ranker,
+            limit=5
+        )
+
+        # Extract top 5 doc names
+        top_docs = []
+        for hits in res:
+            for hit in hits:
+                doc_name = hit.get("doc_name") or hit.get("file_name") or str(hit.id)
+                top_docs.append(doc_name)
+            break
+
+        # Prepare result
+        result = {
+            "query": query_text,
+            "response": top_docs[:5]
+        }
+
+        # Save to file
+        out_path = os.path.join(output_dir, f"query_{query_num}.json")
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        results.append({"query_num": query_num, "output_file": out_path})
+
+    return {"status": "done", "results": results}
+
+
+
+
 
 
 
