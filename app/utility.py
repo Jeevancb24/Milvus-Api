@@ -1,10 +1,7 @@
 import logging
 from pypdf import PdfReader
-from sklearn.feature_extraction.text import TfidfVectorizer
 from pymilvus import MilvusClient, DataType,Function, FunctionType
-from langchain_text_splitters import SentenceTransformersTokenTextSplitter
 from app.config import settings
-import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -143,21 +140,3 @@ async def prepareDataTxt(text):
         "text": chunks,
     }
     return data
-
-#Initialize a global text splitter
-splitter = SentenceTransformersTokenTextSplitter(chunk_overlap=64, chunk_size=512)
-
-async def read_file_return_dict(file_path):
-    logger.info(f"Reading text file: {file_path}")
-    #Read file name from path
-    file_name = os.path.basename(file_path)
-    with open(file_path, 'r', encoding='utf-8') as f:
-        text = f.read()
-        chunks = splitter.split_text(text)
-        # Convert the chunks into the required dictionary format
-        # chunk text should be under key "text"
-        data = [{"text": x, "file_name": file_name} for x in chunks]
-        logger.info(f"File '{file_name}' read and split into {len(chunks)} chunks.")
-    return data
-
-    
