@@ -1,6 +1,6 @@
 import logging
 from pymilvus import CollectionSchema
-from pymilvus.bulk_writer import RemoteBulkWriter, BulkFileType,bulk_import
+from pymilvus.bulk_writer import RemoteBulkWriter, BulkFileType,bulk_import,LocalBulkWriter
 import numpy as np
 from app.utility import  client
 import uuid
@@ -35,14 +35,20 @@ async def write_and_upload_to_azure(data):
 #     file_type=BulkFileType.JSON
 # )
     try: 
-        remote_path = str(uuid.uuid4()).replace("-", "")
-        logger.info(f"Initializing RemoteBulkWriter for Azure: {remote_path}")
-        writer = RemoteBulkWriter(
+        # remote_path = str(uuid.uuid4()).replace("-", "")
+        # logger.info(f"Initializing RemoteBulkWriter for Azure: {remote_path}")
+        # writer = RemoteBulkWriter(
+        # schema=CollectionSchema.construct_from_dict(collection),
+        # connect_param=connect_param,
+        # remote_path=remote_path,
+        # file_type=BulkFileType.PARQUET
+    # )
+        writer = LocalBulkWriter(
         schema=CollectionSchema.construct_from_dict(collection),
-        connect_param=connect_param,
-        remote_path=remote_path,
+        local_path='./output',
+        segment_size=512 * 1024 * 1024, # Default value
         file_type=BulkFileType.PARQUET
-    )
+        )
         # 4. Append rows one by one
         logger.info(f"Appending {len(data)} rows to the writer...")
         for idx, item in enumerate(data):
@@ -65,13 +71,13 @@ async def write_and_upload_to_azure(data):
         logger.error(f"Error in write_and_upload_to_azure: {e}")
         raise e
     
-def bulk_import_from_azure(remote_paths):
-    logger.info(f"Triggering bulk import in Milvus for collection:{remote_paths}")
+def bulk_import_from_azure():
+    # logger.info(f"Triggering bulk import in Milvus for collection:{remote_paths}")
     url = settings.MILVUS_HOST
     resp = bulk_import(
         url=url,
         collection_name=settings.COLLECTION_NAME,
-        files=remote_paths)
+        files=[["output/dcccf677-c648-43be-9a6b-99e60cc7c7a3/1.parquet"]])
     job_id = resp.json()['data']['jobId']
     logger.info(f"Bulk import started. Job ID: {job_id}")
     return job_id

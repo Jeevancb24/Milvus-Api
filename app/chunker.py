@@ -1,5 +1,5 @@
 import logging
-from langchain_text_splitters import RecursiveJsonSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter, RecursiveJsonSplitter
 from transformers import AutoTokenizer
 from langchain_text_splitters.sentence_transformers import SentenceTransformersTokenTextSplitter
 import os
@@ -90,7 +90,11 @@ async def read_file_return_dict(file_path):
     else:
         logger.info(f"Processing {file_extension.upper()} file.")
         text = read_file(file_content, file_name)
-        chunks = enforce_token_limit(text, MODEL_TOKEN_LIMIT, hf_tokenizer)
+        text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=100, chunk_overlap=20, length_function=len
+        )
+        chunks = text_splitter.split_text(text=text)
+        # chunks = enforce_token_limit(text, MODEL_TOKEN_LIMIT, hf_tokenizer)
 
     data = [{"text": x, "file_name": file_name} for x in chunks]
     logger.info(f"File '{file_name}' read and split into {len(chunks)} chunks.")

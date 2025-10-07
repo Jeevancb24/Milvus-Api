@@ -85,24 +85,24 @@ async def run_file_batch(file_list,batch_size):
         # Process the current batch
         # try catch in case of exception
         remote_paths = await write_and_upload_to_azure(all_texts)
-        resp = bulk_import_from_azure(remote_paths)
-        logger.info(f"JOB ID: {resp}")
-        batch_count = 0
-        all_texts = []  # Reset for next batch
-        # Check for the progress of the job until it is completed
-        while True:
-            #check every 5 seconds
-            await asyncio.sleep(5)
-            progress = import_status(resp)
-            if progress['data']['state'] in ['Completed', 'Failed']:
-                logger.info(f"Import job {resp} finished with state: {progress['data']['state']}")
-                if progress['data']['state'] == 'Failed':
-                    failed_files.extend(current_file_batch)
-                break
-            else:
-                logger.info(f"Import job is in state: {progress['data']['state']}.")
-        current_file_batch = []  # Reset for next batch
-    return failed_files
+    #     resp = bulk_import_from_azure(remote_paths)
+    #     logger.info(f"JOB ID: {resp}")
+    #     batch_count = 0
+    #     all_texts = []  # Reset for next batch
+    #     # Check for the progress of the job until it is completed
+    #     while True:
+    #         #check every 5 seconds
+    #         await asyncio.sleep(5)
+    #         progress = import_status(resp)
+    #         if progress['data']['state'] in ['Completed', 'Failed']:
+    #             logger.info(f"Import job {resp} finished with state: {progress['data']['state']}")
+    #             if progress['data']['state'] == 'Failed':
+    #                 failed_files.extend(current_file_batch)
+    #             break
+    #         else:
+    #             logger.info(f"Import job is in state: {progress['data']['state']}.")
+    #     current_file_batch = []  # Reset for next batch
+    return remote_paths
 
 @app.post("/bulk-import-folder/")
 async def bulk_import_folder(folder_path: str = Body(..., embed=True)):
@@ -114,23 +114,23 @@ async def bulk_import_folder(folder_path: str = Body(..., embed=True)):
     batch_size = 100  # Number of files to process in each batch
     failed_files = await run_file_batch(file_list,batch_size)
 
-    if failed_files:
-        final_failed_files = await run_file_batch(failed_files,1)  # Process failed files one by one
-        if final_failed_files:
-            logger.error(f"Some files failed to import even after retrying: {final_failed_files}")
-    else:
-        logger.info("All files processed and uploaded successfully!")
+    # if failed_files:
+    #     final_failed_files = await run_file_batch(failed_files,1)  # Process failed files one by one
+    #     if final_failed_files:
+    #         logger.error(f"Some files failed to import even after retrying: {final_failed_files}")
+    # else:
+    #     logger.info("All files processed and uploaded successfully!")
     
-        #all_texts.append(data)
-    #logger.info("All files processed and uploaded!")
-        # with open(file_path, 'r', encoding='utf-8') as f:
-            # text = f.read()
-            # all_texts.append(text)
-    # Prepare data for all files at once
-    # data = await prepareDataTxt(all_texts)
+    #     #all_texts.append(data)
+    # #logger.info("All files processed and uploaded!")
+    #     # with open(file_path, 'r', encoding='utf-8') as f:
+    #         # text = f.read()
+    #         # all_texts.append(text)
+    # # Prepare data for all files at once
+    # # data = await prepareDataTxt(all_texts)
     
-    #logger.info(f"Bulk import completed. Response: {resp}")
-    return {"bulk_import_response"}
+    # #logger.info(f"Bulk import completed. Response: {resp}")
+    return {f"bulk_import_response:{failed_files}"}
 
 
 @app.post("/batch-hybrid-query/")
@@ -209,6 +209,10 @@ async def batch_hybrid_query(
 
     return {"status": "done", "results": results}
 
+@app.post("/import-to-milvus/")
+async def import_to_milvus():
+    bulk_import_from_azure()
+    return {"status": "Import triggered"}
 
 
 
